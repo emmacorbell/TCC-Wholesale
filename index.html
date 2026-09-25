@@ -3,20 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Trade Orders | The Clearly Collective</title>
+<title>Wholesale Orders | The Clearly Collective</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=Jost:wght@400;500&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%23F0EEE9'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-family='Georgia,serif' font-size='34' letter-spacing='1' fill='%231B1B1F'%3ETCC%3C/text%3E%3C/svg%3E">
 <style>
 /* ===========================================================================
-   THE CLEARLY COLLECTIVE: TRADE ORDERS (retail partner facing)
+   THE CLEARLY COLLECTIVE: WHOLESALE ORDERS (retail partner facing)
    Multi-step form. Submits to Google Sheets via the Apps Script backend.
    ======================================================================== */
 :root{
   --bg:#F0EEE9; --panel:#F7F5F1; --ink:#1B1B1F; --ink-soft:#6E6A64; --ink-faint:#A39E95;
   --line:#DCD7CE; --line-strong:#B9B2A6;
   --err:#7A2E26;
+  --alarm:#A3271C;
   --display:"Cormorant Garamond",Georgia,"Times New Roman",serif;
   --serif:"EB Garamond",Georgia,"Times New Roman",serif;
   --sans:"Jost","Helvetica Neue",Helvetica,Arial,sans-serif;
@@ -161,6 +162,9 @@ input.bad,select.bad,textarea.bad{border-color:var(--err)}
 .alert.on{display:block}
 .alert--err{border-top:1px solid var(--err);border-bottom:1px solid var(--err);color:var(--err)}
 .alert--warn{border-top:1px solid var(--ink);border-bottom:1px solid var(--ink);color:var(--ink)}
+.alert--warn.alert--late{border-color:var(--alarm)}
+.alert .late{color:var(--alarm);font-style:normal;font-weight:500}
+.pair dd.late{color:var(--alarm)}
 .alert--warn ul{margin:10px 0;padding-left:18px}
 .alert--warn li{margin:0 0 4px}
 .timeline-ok{display:none;font-style:italic;font-size:15px;color:var(--ink-soft);margin:-12px 0 26px}
@@ -194,9 +198,9 @@ input.bad,select.bad,textarea.bad{border-color:var(--err)}
   <!-- =================== STEP 0 — WELCOME =================== -->
   <section class="step narrow on" data-step="0">
     <p class="eyebrow center">Retail Partners</p>
-    <h1>Trade Orders</h1>
+    <h1>Wholesale Orders</h1>
     <p class="lede">For our approved retail partners. Select your pieces and preferred delivery date,
-      and our team will confirm your order and issue an invoice within three business days.</p>
+      and our team will be in touch within 48 hours once your order has been approved.</p>
     <div class="center"><button type="button" class="btn btn--primary" data-go="1">Begin</button></div>
   </section>
 
@@ -383,10 +387,10 @@ input.bad,select.bad,textarea.bad{border-color:var(--err)}
 
   <!-- =================== STEP 7 — SUCCESS =================== -->
   <section class="step narrow" data-step="7">
-    <h1 style="margin-bottom:14px">Order Received</h1>
-    <p class="lede">Thank you. Your wholesale order has been submitted to The Clearly Collective.
-      Our team reviews all submissions within 3 business days and will follow up by email to confirm
-      availability, pricing and lead time, and to issue your invoice.</p>
+    <p class="eyebrow center">Thank You</p>
+    <h1 style="margin-bottom:24px">Order Received</h1>
+    <p class="lede">We have received your order. Once it has been approved, you will receive
+      an email from our team within 48 hours.</p>
     <div class="review">
       <dl style="margin:0">
         <div class="pair"><dt>Order Reference</dt><dd id="s_orderId"></dd></div>
@@ -396,8 +400,7 @@ input.bad,select.bad,textarea.bad{border-color:var(--err)}
         <div class="pair"><dt>Requested Delivery</dt><dd id="s_delivery"></dd></div>
       </dl>
     </div>
-    <p class="fieldnote">Please keep your order reference for correspondence. Production begins once the
-      invoice is issued and the deposit is received.</p>
+    <p class="fieldnote center">Please keep your order reference for any correspondence.</p>
     <div class="center" style="margin-top:30px">
       <button type="button" class="btn btn--ghost" id="againBtn">Submit Another Order</button>
     </div>
@@ -420,8 +423,8 @@ input.bad,select.bad,textarea.bad{border-color:var(--err)}
    ======================================================================== */
 var CONFIG = {
 
-  /* Apps Script Web App URL. Leave the placeholder if this page is served FROM
-     Apps Script (recommended); it is only used when hosted elsewhere. */
+  /* The Web app URL from deploying Code.gs (ends in /exec). It saves orders,
+     sends the confirmation email, and serves the production timeline. */
   APPS_SCRIPT_URL: "PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE",
 
   /* Link shown on the terms step. */
@@ -430,10 +433,10 @@ var CONFIG = {
   /* -------------------------------------------------------------------------
      PRODUCTION TIMELINE CHECK
      Reads live lead times from TCC_Vendor_Database and factory closures from
-     TCC Vendor Holidays (through TimelineService.gs), then tells the partner
+     TCC Vendor Holidays (through Code.gs), then tells the partner
      whether their requested delivery date is achievable for each design.
 
-     TIMELINE_URL           the Web app URL from deploying TimelineService.gs
+     TIMELINE_URL           leave as SAME_AS_APPS_SCRIPT_URL; Code.gs serves it
      TIMELINE_ESTIMATE      "max" (safest), "avg", or "min", which set of
                             lead-time columns in the sheet to use
      INCLUDE_SAMPLING       true adds the sample stage for made-to-order
@@ -446,7 +449,9 @@ var CONFIG = {
      blackout dates are skipped when counting. If the service can't be
      reached, the form falls back to LEAD_TIME_DAYS.
      ---------------------------------------------------------------------- */
-  TIMELINE_URL: "PASTE_YOUR_TIMELINE_WEB_APP_URL_HERE",
+  /* Leave as is to use the same Web app as APPS_SCRIPT_URL (recommended:
+     Code.gs serves both orders and the timeline). */
+  TIMELINE_URL: "SAME_AS_APPS_SCRIPT_URL",
   TIMELINE_ESTIMATE: "max",
   INCLUDE_SAMPLING: false,
   ORDER_PROCESSING_DAYS: 7,
@@ -459,7 +464,6 @@ var CONFIG = {
   /* Order minimums from the Wholesale Terms. Set SHOW_MINIMUM_NOTICE to false
      to hide the notice entirely. */
   SHOW_MINIMUM_NOTICE: true,
-  MINIMUM_ORDER_VALUE: 2000,      // reorder minimum (Boutique tier)
   MINIMUM_UNITS_PER_SKU: 25,      // MOQ for a custom (made-to-order) run of one design
 
   /* -------------------------------------------------------------------------
@@ -1035,7 +1039,7 @@ var CONFIG = {
   var timelineData = null;          // { leadTimes: [...], holidays: [...] }
 
   function loadTimeline() {
-    var u = CONFIG.TIMELINE_URL;
+    var u = CONFIG.TIMELINE_URL === "SAME_AS_APPS_SCRIPT_URL" ? CONFIG.APPS_SCRIPT_URL : CONFIG.TIMELINE_URL;
     if (!u || u.indexOf("PASTE_") === 0) return;
     fetch(u).then(function (r) { return r.json(); })
       .then(function (d) { if (d && d.ok) { timelineData = d; refresh(); } })
@@ -1178,9 +1182,6 @@ var CONFIG = {
     /* minimum-order notice (informational only) */
     if (CONFIG.SHOW_MINIMUM_NOTICE && d.totalUnits > 0) {
       var msgs = [];
-      if (d.subtotal < CONFIG.MINIMUM_ORDER_VALUE) {
-        msgs.push("Our standard reorder minimum is " + money(CONFIG.MINIMUM_ORDER_VALUE) + ".");
-      }
       /* in-stock designs have no minimum; custom (and unchecked) designs do */
       var under = d.items.filter(function (i) { return i.stock !== "in" && i.quantity < MOQ; });
       if (under.length) {
@@ -1213,18 +1214,18 @@ var CONFIG = {
     var late = lateItems(d.items, d.deliveryDate);
     if (late.length) {
       var onTime = d.items.length - late.length;
-      $("leadAlert").innerHTML = "Your requested date of " + esc(prettyDate(d.deliveryDate)) +
-        " is earlier than our production timeline allows for:<ul>" +
+      $("leadAlert").innerHTML = '<span class="late">Your requested date of ' + esc(prettyDate(d.deliveryDate)) +
+        " is earlier than our production timeline allows for:</span><ul>" +
         late.map(function (i) {
           return "<li>" + esc(i.name) + ", " + (i.madeToOrder ? "made to order" : "in stock") +
             ", estimated delivery " + esc(prettyDate(i.estDate)) + "</li>";
         }).join("") + "</ul>" +
         (onTime ? "Your other " + (onTime === 1 ? "selection" : onTime + " selections") + " can arrive by then. " : "") +
         "You can still submit, and our team will confirm what is achievable.";
-      $("leadAlert").classList.add("on");
+      $("leadAlert").classList.add("on", "alert--late");
       $("leadOk").classList.remove("on");
     } else {
-      $("leadAlert").classList.remove("on");
+      $("leadAlert").classList.remove("on", "alert--late");
       var okNow = d.items.length > 0 && parseYMD(d.deliveryDate);
       $("leadOk").textContent = okNow ? "Your requested date works for every design in your order." : "";
       $("leadOk").classList.toggle("on", !!okNow);
@@ -1250,6 +1251,7 @@ var CONFIG = {
         ? "Requested date is earlier than our timeline allows for " + late.map(function (i) { return i.name; }).join(", ") +
           ". Earliest estimated delivery for the full order is " + prettyDate(earliest) + "."
         : "On schedule for your requested date.");
+    $("r_timeline").classList.toggle("late", late.length > 0);
     setPair("r_shipping", [d.carrier && ("Carrier: " + d.carrier), d.carrierAccount && ("Account: " + d.carrierAccount),
       d.serviceLevel && ("Service: " + d.serviceLevel), d.shippingNotes].filter(Boolean).join("\n") ||
       (d.totalUnits ? "The Clearly Collective will invoice shipping separately." : ""));
