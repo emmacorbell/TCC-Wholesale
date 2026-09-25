@@ -1,0 +1,1074 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wholesale Order Submission — The Clearly Collective</title>
+<style>
+/* ===========================================================================
+   THE CLEARLY COLLECTIVE — WHOLESALE ORDER SUBMISSION (retail partner facing)
+   Multi-step form. Submits to Google Sheets via the Apps Script backend.
+   ======================================================================== */
+:root{
+  --bg:#F0EEE9; --panel:#FFFFFF; --ink:#1B1B1F; --ink-soft:#6A6A6E;
+  --line:#DAD5CB; --line-strong:#BFB8AC;
+  --warn-bg:#FBF3E2; --warn-line:#D6AE5C; --warn-ink:#6F5313;
+  --err:#93291E; --err-bg:#FBEFED;
+  --serif:Georgia,"Times New Roman",serif;
+  --sans:"Helvetica Neue",Helvetica,Arial,sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--serif);font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.shell{max-width:780px;margin:0 auto;padding:40px 24px 140px}
+@media(max-width:600px){.shell{padding:28px 18px 150px}}
+
+.logo{font-family:var(--serif);font-size:13px;letter-spacing:.2em;text-align:center;line-height:1.5;
+  padding:14px 18px;background:#FDFBF4;display:inline-block;margin-bottom:40px}
+.logo span{display:block;font-size:9px;letter-spacing:.3em;color:var(--ink-soft)}
+
+h1{font-family:var(--serif);font-weight:600;font-size:38px;line-height:1.2;margin:0 0 20px;text-align:center}
+@media(max-width:600px){h1{font-size:28px}}
+.lede{font-style:italic;color:#3C3C40;text-align:center;max-width:62ch;margin:0 auto 34px}
+h2{font-family:var(--serif);font-weight:600;font-size:19px;letter-spacing:.06em;text-transform:uppercase;margin:0 0 26px}
+h3{font-family:var(--serif);font-weight:600;font-size:15px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft);margin:36px 0 18px}
+.note{font-size:14px;color:var(--ink-soft);margin:0 0 22px}
+
+/* steps */
+.step{display:none}
+.step.on{display:block}
+.center{text-align:center}
+
+/* fields */
+.field{margin:0 0 24px}
+label{display:block;font-size:15px;margin:0 0 8px}
+.star{color:#C0392B}
+input[type=text],input[type=email],input[type=tel],input[type=date],input[type=number],select,textarea{
+  width:100%;font-family:var(--serif);font-size:16px;color:var(--ink);
+  background:var(--panel);border:1px solid var(--line-strong);border-radius:3px;padding:12px 14px}
+textarea{min-height:120px;resize:vertical}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
+input.bad,select.bad,textarea.bad{border-color:var(--err);background:var(--err-bg)}
+.fieldnote{font-size:13px;color:var(--ink-soft);margin:6px 0 0;font-style:italic}
+.errline{display:none;font-size:13px;color:var(--err);margin:6px 0 0}
+.errline.on{display:block}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:0 20px}
+@media(max-width:600px){.two{grid-template-columns:1fr}}
+
+/* file input */
+.drop{border:1px dashed var(--line-strong);background:var(--panel);border-radius:3px;padding:20px;text-align:center}
+.drop.over{border-color:var(--ink);background:#FDFBF4}
+.drop input{display:none}
+.drop button{font-family:var(--serif);font-size:14px;background:none;border:1px solid var(--line-strong);
+  border-radius:3px;padding:8px 16px;cursor:pointer;color:var(--ink)}
+.drop button:hover{border-color:var(--ink)}
+.dropmsg{font-size:14px;color:var(--ink-soft);margin:0 0 12px}
+.filechip{display:none;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;
+  background:#FDFBF4;border:1px solid var(--line);border-radius:3px;padding:10px 12px;font-size:14px;text-align:left}
+.filechip.on{display:flex}
+.filechip button{border:0;background:none;color:var(--err);cursor:pointer;font-size:13px;text-decoration:underline;font-family:var(--serif)}
+
+/* catalogue */
+.category{margin:0 0 20px}
+.cat-head{font-family:var(--serif);font-weight:600;font-size:20px;letter-spacing:.04em;text-transform:none;
+  color:var(--ink);margin:38px 0 4px;padding-bottom:10px;border-bottom:1px solid var(--line-strong)}
+.category:first-child .cat-head{margin-top:0}
+.cat-note{font-size:13px;color:var(--ink-soft);font-style:italic;margin:0 0 22px}
+.col-head{font-family:var(--sans);font-weight:600;font-size:11px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--ink-soft);margin:26px 0 16px}
+.card .msrp{margin:-6px 0 12px}
+.card .wholesale{font-size:16px}
+.card .onrequest{font-size:14px;color:var(--ink-soft);font-style:italic}
+.catmeta{font-size:14px;color:var(--ink-soft);margin:0 0 26px;line-height:1.7}
+.collection{margin:0 0 42px}
+.collection h3{margin-top:0}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:26px}
+@media(max-width:860px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.grid{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:3px;overflow:hidden;display:flex;flex-direction:column}
+.card figure{margin:0;width:100%;aspect-ratio:1/1;background:#EDE9E1;position:relative;overflow:hidden}
+.card img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.card .body{padding:14px 14px 16px;display:flex;flex-direction:column;flex:1}
+.card .name{font-size:14px;letter-spacing:.06em;text-transform:uppercase;line-height:1.35;margin:0 0 6px}
+.card .spec{font-size:13px;color:var(--ink-soft);margin:0 0 4px}
+.card .price{font-size:15px;margin:8px 0 12px}
+.qty{display:flex;align-items:center;border:1px solid var(--line-strong);border-radius:3px;width:fit-content;margin-top:auto;background:#fff}
+.qty button{width:34px;height:34px;border:0;background:none;font-size:17px;cursor:pointer;color:var(--ink);font-family:var(--sans)}
+.qty button:hover{background:#F4F1EA}
+.qty input{width:52px;height:34px;border:0;border-left:1px solid var(--line);border-right:1px solid var(--line);
+  text-align:center;font-family:var(--serif);font-size:15px;padding:0;background:transparent;-moz-appearance:textfield;border-radius:0}
+.qty input::-webkit-outer-spin-button,.qty input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.qty input:focus{box-shadow:none;border-color:var(--line)}
+
+/* running tally */
+.tally{position:sticky;bottom:0;background:#FDFBF4;border:1px solid var(--line);border-radius:3px;
+  padding:14px 18px;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-top:8px}
+.tally .big{font-size:18px}
+.tally .muted{font-size:14px;color:var(--ink-soft)}
+
+/* terms */
+.termsbox{border:1px solid var(--ink);border-radius:3px;background:var(--panel);padding:20px 22px;margin:0 0 22px;font-size:15px}
+.termsbox p{margin:0 0 14px}
+.termsbox p:last-child{margin-bottom:0}
+.termsbox a{color:#2E5AAC}
+.check{display:flex;align-items:flex-start;gap:12px;border:1px solid var(--line-strong);border-radius:3px;
+  background:var(--panel);padding:14px 16px;cursor:pointer;font-size:15px}
+.check.bad{border-color:var(--err);background:var(--err-bg)}
+.check input{width:17px;height:17px;margin:3px 0 0;accent-color:#1B1B1F;flex:none}
+.sigwrap{background:var(--panel);border:1px solid var(--line-strong);border-radius:3px;touch-action:none}
+.sigwrap.bad{border-color:var(--err)}
+.sigwrap canvas{display:block;width:100%;height:170px;cursor:crosshair}
+.sigbar{display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:13px;color:var(--ink-soft)}
+.sigbar button{border:0;background:none;text-decoration:underline;cursor:pointer;font-family:var(--serif);font-size:13px;color:var(--ink-soft)}
+
+/* review */
+.review{background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:6px 20px;margin-bottom:26px}
+.pair{display:grid;grid-template-columns:200px 1fr;gap:14px;padding:12px 0;border-bottom:1px solid var(--line);font-size:15px}
+.pair:last-child{border-bottom:0}
+@media(max-width:600px){.pair{grid-template-columns:1fr;gap:2px}}
+.pair dt{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-soft);font-family:var(--sans)}
+.pair dd{margin:0;white-space:pre-line}
+.pair dd.empty{color:#B3ADA2}
+
+/* alerts */
+.alert{border-radius:3px;padding:13px 16px;margin:0 0 20px;font-size:15px;display:none}
+.alert.on{display:block}
+.alert--err{border:1px solid var(--err);background:var(--err-bg);color:var(--err)}
+.alert--warn{border:1px solid var(--warn-line);background:var(--warn-bg);color:var(--warn-ink)}
+
+/* buttons + nav */
+.btn{font-family:var(--serif);font-size:16px;border-radius:4px;padding:13px 30px;cursor:pointer;border:1px solid var(--ink)}
+.btn--primary{background:#1B1B1F;color:#fff}
+.btn--primary:hover:not([disabled]){background:#000}
+.btn--ghost{background:transparent;color:var(--ink)}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.navbar{position:fixed;left:0;right:0;bottom:0;background:rgba(240,238,233,.96);border-top:1px solid var(--line);
+  padding:14px 24px;display:flex;justify-content:center;gap:14px;align-items:center;backdrop-filter:blur(4px)}
+.navbar .inner{width:100%;max-width:780px;display:flex;justify-content:space-between;align-items:center;gap:14px}
+.pct{font-size:13px;color:var(--ink-soft);font-family:var(--sans);letter-spacing:.06em}
+.spin{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;
+  border-radius:50%;animation:sp .7s linear infinite;margin-right:9px;vertical-align:-1px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.hide{display:none !important}
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="center"><div class="logo">THE<br><strong>CLEARLY COLLECTIVE</strong><span>&nbsp;</span></div></div>
+
+  <!-- =================== STEP 0 — WELCOME =================== -->
+  <section class="step on" data-step="0">
+    <h1>Wholesale Order Submission</h1>
+    <p class="lede">This form is for approved retail partners to submit reorders or seasonal buys with
+      The Clearly Collective. Please provide as much detail as possible regarding products, quantities,
+      and delivery timing so our operations team can confirm your order and issue an invoice.
+      Our team reviews all submissions within 3 business days.</p>
+    <div class="center"><button type="button" class="btn btn--primary" data-go="1">Begin &nbsp;&rarr;</button></div>
+  </section>
+
+  <!-- =================== STEP 1 — RETAILER INFORMATION =================== -->
+  <section class="step" data-step="1">
+    <h2>Retailer Information</h2>
+
+    <div class="field">
+      <label for="storeName">Store / Company Name <span class="star">*</span></label>
+      <input type="text" id="storeName" data-key="storeName" data-required data-label="Store / Company Name">
+      <p class="errline" id="e_storeName">Required</p>
+    </div>
+    <div class="field">
+      <label for="contactName">Primary Contact Name <span class="star">*</span></label>
+      <input type="text" id="contactName" data-key="contactName" data-required data-label="Primary Contact Name">
+      <p class="errline" id="e_contactName">Required</p>
+    </div>
+    <div class="field">
+      <label for="contactEmail">Primary Contact Email <span class="star">*</span></label>
+      <input type="email" id="contactEmail" data-key="contactEmail" data-required data-email data-label="Primary Contact Email">
+      <p class="errline" id="e_contactEmail">Enter a valid email address</p>
+    </div>
+    <div class="field">
+      <label for="contactPhone">Primary Contact Phone</label>
+      <input type="tel" id="contactPhone" data-key="contactPhone" placeholder="+1 555 234 5678">
+    </div>
+    <div class="field">
+      <label for="billingAddress">Billing and Shipping Address <span class="star">*</span></label>
+      <textarea id="billingAddress" data-key="billingAddress" data-required data-label="Billing and Shipping Address"
+        placeholder="Street, city, state, ZIP, country"></textarea>
+      <p class="errline" id="e_billingAddress">Required</p>
+    </div>
+
+    <div class="field">
+      <label>Resale Certificate / Tax ID Upload</label>
+      <div class="drop" id="drop">
+        <p class="dropmsg">Drop your file here, or</p>
+        <button type="button" id="pickFile">Choose File</button>
+        <input type="file" id="resaleFile" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,application/pdf,image/*">
+        <p class="fieldnote" style="margin-top:12px">PDF or image, up to 8 MB.</p>
+      </div>
+      <div class="filechip" id="fileChip"><span id="fileName"></span><button type="button" id="clearFile">Remove</button></div>
+      <p class="errline" id="e_resaleFile">That file can't be used. Please choose a PDF or image under 8 MB.</p>
+    </div>
+
+    <div class="field">
+      <label for="invoicingContact">Invoicing Contact (if different)</label>
+      <input type="text" id="invoicingContact" data-key="invoicingContact" placeholder="Name and email">
+    </div>
+  </section>
+
+  <!-- =================== STEP 2 — CATALOGUE =================== -->
+  <section class="step" data-step="2">
+    <h2>Product Catalogue</h2>
+    <p class="catmeta">
+      Material: 100% silk, hand-rolled and hand-sewn<br>
+      Gift Ready Packaging Included<br>
+      Prices shown are wholesale, per unit.
+    </p>
+    <div id="collections"></div>
+    <div class="alert alert--warn" id="moqAlert"></div>
+    <div class="tally">
+      <span class="muted">Total units <strong class="big" id="tallyUnits">0</strong></span>
+      <span class="muted">Order subtotal <strong class="big" id="tallySubtotal">$0.00</strong></span>
+    </div>
+    <p class="fieldnote" id="tallyNote"></p>
+    <p class="fieldnote" style="margin-top:14px">Shipping is quoted separately and confirmed on your invoice.</p>
+  </section>
+
+  <!-- =================== STEP 3 — DELIVERY & SHIPPING =================== -->
+  <section class="step" data-step="3">
+    <h2>Delivery &amp; Shipping</h2>
+
+    <div class="field">
+      <label for="deliveryDate">Requested Delivery Date</label>
+      <input type="date" id="deliveryDate" data-key="deliveryDate">
+      <p class="fieldnote">Standard production lead times run 10–45 days from deposit receipt.</p>
+    </div>
+    <div class="alert alert--warn" id="leadAlert">
+      <strong>Short lead time</strong> — this date is inside our standard production window.
+      You can still submit; our team will confirm what is achievable.
+    </div>
+
+    <h3>Shipping Details (Optional)</h3>
+    <p class="note">If you'd like shipping billed directly to your carrier account, please include your details
+      below so our fulfillment partner can ship on your account. If left blank, The Clearly Collective will
+      invoice shipping separately once final costs are confirmed.</p>
+
+    <div class="two">
+      <div class="field">
+        <label for="carrier">Preferred Carrier</label>
+        <select id="carrier" data-key="carrier"></select>
+      </div>
+      <div class="field">
+        <label for="carrierAccount">Account Number</label>
+        <input type="text" id="carrierAccount" data-key="carrierAccount">
+      </div>
+    </div>
+    <div class="field">
+      <label for="serviceLevel">Preferred Service Level</label>
+      <select id="serviceLevel" data-key="serviceLevel"></select>
+      <p class="fieldnote">Select your preferred shipping speed.</p>
+    </div>
+    <div class="field">
+      <label for="shippingNotes">Notes</label>
+      <textarea id="shippingNotes" data-key="shippingNotes"
+        placeholder="Any additional shipping or delivery instructions (e.g. &ldquo;Closed Mondays&rdquo; or &ldquo;Deliver to rear entrance&rdquo;)."></textarea>
+    </div>
+  </section>
+
+  <!-- =================== STEP 4 — MERCHANDISING =================== -->
+  <section class="step" data-step="4">
+    <h2>Merchandising &amp; Promotional Support (Optional)</h2>
+    <p>Each order includes branded display cards featuring QR codes that link to The Clearly Collective's
+      story and collection details. These materials are designed to support thoughtful in-store presentation
+      and storytelling.</p>
+    <p>For partners who wish to better understand their customers' preferences before finalizing an order,
+      we can provide a draft Instagram post or story featuring your prospective selections. This allows you
+      to share the designs with your audience and gauge their interest in advance.</p>
+    <p>Please note below if you'd like to explore this option or other collaborative materials such as
+      in-store signage or co-created content.</p>
+    <div class="field" style="margin-top:24px">
+      <label for="merchNotes" class="hide">Merchandising notes</label>
+      <textarea id="merchNotes" data-key="merchNotes" placeholder="Type your answer here…"></textarea>
+    </div>
+  </section>
+
+  <!-- =================== STEP 5 — REVIEW =================== -->
+  <section class="step" data-step="5">
+    <h2>Review Your Order</h2>
+    <div class="review">
+      <dl style="margin:0">
+        <div class="pair"><dt>Store</dt><dd id="r_store"></dd></div>
+        <div class="pair"><dt>Contact</dt><dd id="r_contact"></dd></div>
+        <div class="pair"><dt>Billing / Shipping</dt><dd id="r_address"></dd></div>
+        <div class="pair"><dt>Resale Certificate</dt><dd id="r_resale"></dd></div>
+        <div class="pair"><dt>Products</dt><dd id="r_products"></dd></div>
+        <div class="pair"><dt>Total Units</dt><dd id="r_units"></dd></div>
+        <div class="pair"><dt>Order Subtotal</dt><dd id="r_subtotal"></dd></div>
+        <div class="pair"><dt>Requested Delivery</dt><dd id="r_delivery"></dd></div>
+        <div class="pair"><dt>Shipping</dt><dd id="r_shipping"></dd></div>
+        <div class="pair"><dt>Merchandising</dt><dd id="r_merch"></dd></div>
+      </dl>
+    </div>
+    <p class="fieldnote">Subtotal excludes shipping and any applicable duties. Final pricing is confirmed on your invoice.</p>
+  </section>
+
+  <!-- =================== STEP 6 — TERMS & SIGNATURE =================== -->
+  <section class="step" data-step="6">
+    <h2>Approval &amp; Terms Confirmation</h2>
+
+    <div class="termsbox">
+      <p>By signing below, I confirm that I have reviewed and agree to
+        <a id="termsLink" href="#" target="_blank" rel="noopener">The Clearly Collective's Wholesale Program Terms &amp; Overview</a>.</p>
+      <p>This signature serves as formal acknowledgment of my acceptance of those terms and confirmation of
+        partnership with The Clearly Collective. I understand that production will begin once the invoice is
+        issued and deposit payment is received.</p>
+      <p><em>A separate contract will be provided only for exclusive collaborations.</em></p>
+    </div>
+
+    <div class="field">
+      <label class="check" id="acceptWrap" for="acceptTerms">
+        <input type="checkbox" id="acceptTerms">
+        <span>I confirm my acceptance of the above terms.</span>
+      </label>
+      <p class="errline" id="e_acceptTerms">Please confirm your acceptance of the terms.</p>
+    </div>
+
+    <div class="field">
+      <label for="signerName">Name of Signer <span class="star">*</span></label>
+      <input type="text" id="signerName" data-key="signerName" data-required data-label="Name of Signer">
+      <p class="errline" id="e_signerName">Required</p>
+    </div>
+
+    <div class="field">
+      <label>Signature <span class="star">*</span></label>
+      <div class="sigwrap" id="sigWrap"><canvas id="sigCanvas"></canvas></div>
+      <div class="sigbar"><span>Sign with your mouse, finger, or stylus.</span><button type="button" id="sigClear">Clear</button></div>
+      <p class="errline" id="e_signature">A signature is required.</p>
+    </div>
+
+    <div class="alert alert--err" id="submitAlert"></div>
+  </section>
+
+  <!-- =================== STEP 7 — SUCCESS =================== -->
+  <section class="step" data-step="7">
+    <h1 style="margin-bottom:14px">Order Received</h1>
+    <p class="lede">Thank you. Your wholesale order has been submitted to The Clearly Collective.
+      Our team reviews all submissions within 3 business days and will follow up by email to confirm
+      availability, pricing and lead time, and to issue your invoice.</p>
+    <div class="review">
+      <dl style="margin:0">
+        <div class="pair"><dt>Order Reference</dt><dd id="s_orderId"></dd></div>
+        <div class="pair"><dt>Store</dt><dd id="s_store"></dd></div>
+        <div class="pair"><dt>Total Units</dt><dd id="s_units"></dd></div>
+        <div class="pair"><dt>Order Subtotal</dt><dd id="s_subtotal"></dd></div>
+        <div class="pair"><dt>Requested Delivery</dt><dd id="s_delivery"></dd></div>
+      </dl>
+    </div>
+    <p class="fieldnote">Please keep your order reference for correspondence. Production begins once the
+      invoice is issued and the deposit is received.</p>
+    <div class="center" style="margin-top:30px">
+      <button type="button" class="btn btn--ghost" id="againBtn">Submit Another Order</button>
+    </div>
+  </section>
+</div>
+
+<!-- =================== NAVIGATION BAR =================== -->
+<div class="navbar" id="navbar">
+  <div class="inner">
+    <button type="button" class="btn btn--ghost" id="backBtn">&larr; Back</button>
+    <span class="pct" id="pct">0%</span>
+    <button type="button" class="btn btn--primary" id="nextBtn">Continue &nbsp;&rarr;</button>
+  </div>
+</div>
+
+<script>
+/* ===========================================================================
+   CONFIGURATION — the only block you need to edit.
+   ======================================================================== */
+var CONFIG = {
+
+  /* Apps Script Web App URL. Leave the placeholder if this page is served FROM
+     Apps Script (recommended); it is only used when hosted elsewhere. */
+  APPS_SCRIPT_URL: "PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE",
+
+  /* Link shown on the terms step. */
+  TERMS_URL: "PASTE_LINK_TO_YOUR_WHOLESALE_TERMS_PDF_HERE",
+
+  /* Warn (do not block) when the requested delivery date is closer than this. */
+  LEAD_TIME_DAYS: 45,
+
+  /* Order minimums from the Wholesale Terms. Shown as a note, never enforced —
+     set SHOW_MINIMUM_NOTICE to false to hide it entirely. */
+  SHOW_MINIMUM_NOTICE: true,
+  MINIMUM_ORDER_VALUE: 2000,      // reorder minimum (Boutique tier)
+  MINIMUM_UNITS_PER_SKU: 25,      // MOQ per design per SKU (Boutique tier)
+
+  CARRIERS: ["FedEx", "UPS", "DHL", "USPS", "Other"],
+  SERVICE_LEVELS: ["Ground", "2-Day", "Overnight / Express", "International Economy", "International Priority"],
+
+  /* Keep in step with MAX_UPLOAD_MB in Code.gs. Large scans are the most
+     likely thing to fail on submission, so this is deliberately conservative. */
+  MAX_UPLOAD_MB: 8,
+
+  /* -------------------------------------------------------------------------
+     THE CATALOGUE — grouped by product category, then by collection.
+
+     Every product line takes:
+       name      what the partner sees
+       sku       your Shopify SKU
+       size      shown under the name
+       wholesale what the partner pays, per unit
+       msrp      suggested retail, shown so they can see the margin
+       image     Shopify CDN URL (IMG + filename, or a full https:// URL)
+
+     Pulled live from your Shopify store on 18 September 2026: names, SKUs,
+     retail prices and image URLs are real. WHOLESALE prices are only set where
+     you confirmed them — $77 collegiate scarves, $45 pocket squares, $30
+     twillies. Anything still at 0 shows as "Wholesale price on request" and is
+     left out of the order subtotal until you set it.
+
+     To hide a product, delete its line or put // in front of it.
+     ---------------------------------------------------------------------- */
+
+  /* Shopify CDN prefix, so the product lines below stay readable. */
+  IMG_BASE: "https://cdn.shopify.com/s/files/1/0666/9628/2394/files/",
+
+  CATEGORIES: [
+
+    /* ===================================================================== */
+    {
+      name: "Silk Scarves — 38\" x 38\"",
+      note: "100% silk twill, hand-rolled and hand-sewn. Gift-ready packaging included.",
+      collections: [
+        {
+          name: "Collegiate Collection",
+          products: [
+            { name: "The Ann Arbor Scarf",                     sku: "MICH38",    size: '38" x 38"', wholesale: 77, msrp: 155, image: "IMG_2040.jpg?v=1787928935" },
+            { name: "The Athens Bulldog Georgia Scarf",        sku: "UGA38",     size: '38" x 38"', wholesale: 77, msrp: 155, image: "TCC_-_Athens_Studio.jpg?v=1787284323" },
+            { name: "The Cambridge H Yard Scarf",              sku: "HARV38",    size: '38" x 38"', wholesale: 77, msrp: 155, image: "Untitled_design_-_4_SnapseedCopy.jpg?v=1787287163" },
+            { name: "The Chapel Hill NC Scarf",                sku: "UNC38",     size: '38" x 38"', wholesale: 77, msrp: 155, image: "TCC_-_Chapel_Hill_Studio_2.jpg?v=1787670554" },
+            { name: "The Charleston Scarf",                    sku: "CHRLSTN38", size: '38" x 38"', wholesale: 77, msrp: 155, image: "TCC_-_Charleston_Studio.jpg?v=1787283616" },
+            { name: "The Charlottesville Tundy Scarf | Navy",  sku: "UVAB38",    size: '38" x 38"', wholesale: 77, msrp: 155, image: "TCC_-_Charlottsville_Navy_Studio.jpg?v=1787286158" },
+            { name: "The Charlottesville Tundy Scarf | Orange",sku: "UVAO38",    size: '38" x 38"', wholesale: 77, msrp: 155, image: "TCC_-_Charlottsville_Orange_Studio.jpg?v=1787286206" },
+            { name: "The Dear Old Penn Scarf",                 sku: "PENN38",    size: '38" x 38"', wholesale: 77, msrp: 155, image: "TCC_-_PENN_Studio.jpg?v=1787286413" },
+            { name: "The Georgetown DC Scarf",                 sku: "GTOWN38",   size: '38" x 38"', wholesale: 77, msrp: 155, image: "TCC_-_GTOWN_Studio.jpg?v=1787285763" },
+            { name: "The Hanover Big Green Scarf",             sku: "DMOUTH38",  size: '38" x 38"', wholesale: 77, msrp: 155, image: "IMG_2028.jpg?v=1787928930" },
+            { name: "The Morningside Heights Alma Mater Scarf",sku: "COL38",     size: '38" x 38"', wholesale: 77, msrp: 155, image: "TCC_-_Morningside_Heights_Studio.jpg?v=1787284907" },
+            { name: "The Nashville Scarf",                     sku: "VND38",     size: '38" x 38"', wholesale: 77, msrp: 155, image: "TCC_-_Nashville_Studio.jpg?v=1787285309" },
+            { name: "The Naval Annapolis Scarf",               sku: "NAVL38",    size: '38" x 38"', wholesale: 77, msrp: 155, image: "IMG_2037.jpg?v=1787928932" },
+            { name: "The New Haven Bulldog Scarf",             sku: "YAL38",     size: '38" x 38"', wholesale: 77, msrp: 155, image: "IMG_2049.jpg?v=1787907763" },
+            { name: "The Orange Austin Scarf",                 sku: "UTA38",     size: '38" x 38"', wholesale: 77, msrp: 155, image: "Gemini_Generated_Image_eydl1feydl1feydl.jpg?v=1787941173" },
+            { name: "The Pton Ivy Scarf",                      sku: "PTOWN38",   size: '38" x 38"', wholesale: 77, msrp: 155, image: "TCC_-_PTON_Studio.jpg?v=1787285714" },
+            { name: "The Seven Sisters Scarf",                 sku: "SSTR38",    size: '38" x 38"', wholesale: 77, msrp: 155, image: "TCC_-_Seven_Sisters_Studio.jpg?v=1787285033" },
+            { name: "The South Bend Indiana Leprechaun Scarf", sku: "NTRDM38",   size: '38" x 38"', wholesale: 77, msrp: 155, image: "TCC_-_South_Bend_Indiana_Studio.jpg?v=1787284477" },
+            { name: "The Tuscaloosa Alabama Scarf",            sku: "BAM38",     size: '38" x 38"', wholesale: 77, msrp: 155, image: "TCC_Tuscaloosa_Studio.jpg?v=1787285133" },
+            { name: "The Winston Salem Forest Scarf",          sku: "WKEF38",    size: '38" x 38"', wholesale: 77, msrp: 155, image: "IMG_2030.jpg?v=1787928932" }
+          ]
+        },
+        {
+          /* ⚠ Retail is $185 here, not $155 — set the wholesale price you want. */
+          name: "Summers Collection",
+          products: [
+            { name: "The Amalfi Scarf",                  sku: "AMALF38",   size: '38" x 38"', wholesale: 0, msrp: 185, image: "TCC_Amalfi_Studio.png?v=1787283814" },
+            { name: "The Block Island Scarf",            sku: "BLKISLDR38",size: '38" x 38"', wholesale: 0, msrp: 185, image: "TCC_Block_Island_Studio.png?v=1787285655" },
+            { name: "The Fishers Island Scarf | Blush",  sku: "FISHC38",   size: '38" x 38"', wholesale: 0, msrp: 185, image: "DSCF0927_1.jpg?v=1787939998" },
+            { name: "The Fishers Island Scarf | Green",  sku: "FISHG38",   size: '38" x 38"', wholesale: 0, msrp: 185, image: "TCC_Fishers_Island_Green_Studio.png?v=1787285505" },
+            { name: "The Hamptons Scarf",                sku: "HAMP38V2",  size: '38" x 38"', wholesale: 0, msrp: 185, image: "TCC_Hamptons_Studio.png?v=1787283437" },
+            { name: "The Lake Como Scarf",               sku: "LCOMO38",   size: '38" x 38"', wholesale: 0, msrp: 185, image: "Photo_Jul_01_2026_2_12_11_AM_1.jpg?v=1787939215" },
+            { name: "The Mallorca Scarf",                sku: "MALRC38",   size: '38" x 38"', wholesale: 0, msrp: 185, image: "IMG_0821_1.jpg?v=1787928930" },
+            { name: "The Martha's Vineyard Scarf",       sku: "MRTHVRD38", size: '38" x 38"', wholesale: 0, msrp: 185, image: "IMG_2014.jpg?v=1787928930" },
+            { name: "The Nantucket Scarf",               sku: "NANB38",    size: '38" x 38"', wholesale: 0, msrp: 185, image: "TCC_Nantucket_Studio.png?v=1787286479" },
+            { name: "The Newport Scarf",                 sku: "NEWP38V2",  size: '38" x 38"', wholesale: 0, msrp: 185, image: "IMG_2013.jpg?v=1787928929" },
+            { name: "The Santorini Scarf",               sku: "SANTI38",   size: '38" x 38"', wholesale: 0, msrp: 185, image: "TCC_Santorini_Studio.png?v=1787283991" },
+            { name: "The St. Tropez Scarf",              sku: "STP38",     size: '38" x 38"', wholesale: 0, msrp: 185, image: "TCC_St_Tropez_Studio.png?v=1787283938" },
+            { name: "The Watch Hill Scarf",              sku: "WTCHHL38",  size: '38" x 38"', wholesale: 0, msrp: 185, image: "TCC_Watch_Hill_Studio.png?v=1787283523" }
+          ]
+        },
+        {
+          /* ⚠ Retail is $185 here. Chicago and Dallas are "coming soon" in Shopify. */
+          name: "Cities Collection",
+          products: [
+            { name: "The Chicago Scarf",           sku: "CHI38",   size: '38" x 38"', wholesale: 0, msrp: 185, image: "Screenshot2026-07-23at12.29.23PM.png?v=1784824175" },
+            { name: "The Dallas Scarf",            sku: "DAL38",   size: '38" x 38"', wholesale: 0, msrp: 185, image: "Gemini_Generated_Image_pquxfopquxfopqux.jpg?v=1787624706" },
+            { name: "The DC Scarf",                sku: "DC38",    size: '38" x 38"', wholesale: 0, msrp: 185, image: "IMG_2021.jpg?v=1787928927" },
+            { name: "The Manhattan Scarf | Green", sku: "NY38",    size: '38" x 38"', wholesale: 0, msrp: 185, image: "Untitled_design_-_45_SnapseedCopy.jpg?v=1787287026" },
+            { name: "The Manhattan Scarf | Tan",   sku: "NYTAN38", size: '38" x 38"', wholesale: 0, msrp: 185, image: "TCC_-_Manhattan_Tan_Studio.jpg?v=1787282551" }
+          ]
+        }
+      ]
+    },
+
+    /* ===================================================================== */
+    {
+      name: "Silk Pocket Squares — 12\" x 12\"",
+      note: "100% silk twill, hand-rolled and hand-sewn.",
+      collections: [
+        {
+          name: "Collegiate Collection",
+          products: [
+            { name: "The Charlottesville Tundy Pocket Square | Orange", sku: "UVAOP12", size: '12" x 12"', wholesale: 45, msrp: 95, image: "TCC_-_Charlottsville_Orange_Pocket_Square_Studio.jpg?v=1787284801" },
+            { name: "The Georgetown DC Pocket Square",                  sku: "GTOWN12", size: '12" x 12"', wholesale: 45, msrp: 95, image: "TCC_-_GTOWN_Pocket_Square_Studio.jpg?v=1787286837" }
+          ]
+        },
+        {
+          name: "Summers Collection",
+          products: [
+            { name: "The Amalfi Pocket Square",                 sku: "AMAL12",  size: '12" x 12"', wholesale: 45, msrp: 95, image: "TCC_-_Amalfi_Pocket_Square_Studio.jpg?v=1787282308" },
+            { name: "The Fishers Island Pocket Square | Blush", sku: "FISHC12", size: '12" x 12"', wholesale: 45, msrp: 95, image: "TCC_-_Fishers_Island_Blush_Pocket_Square_Studio.jpg?v=1787285367" },
+            { name: "The Fishers Island Pocket Square | Green", sku: "FISHG12", size: '12" x 12"', wholesale: 45, msrp: 95, image: "TCC_-_Fishers_Island_Green_Pocket_Sqaure_Studio.jpg?v=1787285427" },
+            { name: "The Nantucket Pocket Square",              sku: "NANB12",  size: '12" x 12"', wholesale: 45, msrp: 95, image: "Screenshot2026-05-04at10.49.58AM.png?v=1777909822" }
+          ]
+        },
+        {
+          name: "Cities Collection",
+          products: [
+            { name: "The DC Pocket Square",                sku: "DC12", size: '12" x 12"', wholesale: 45, msrp: 95, image: "TCC_-_DC_Pocket_Sqaure_Studio.jpg?v=1787282636" },
+            { name: "The Manhattan Pocket Square | Green", sku: "NY12", size: '12" x 12"', wholesale: 45, msrp: 95, image: "TCC_-_Manhattan_Green_Pocket_Sqaure_Studio.jpg?v=1787282812" }
+          ]
+        }
+      ]
+    },
+
+    /* ===================================================================== */
+    {
+      name: "Twillies / Silk Ribbons",
+      note: "100% silk twill ribbon scarf.",
+      collections: [
+        {
+          name: "Collegiate Collection",
+          products: [
+            { name: "The Chapel Hill NC Silk Ribbon",                 sku: "UNC34",   size: '2" x 34"', wholesale: 30, msrp: 65, image: "TCC_-_Chapel_Hill_Ribbon_Studio.png?v=1787292173" },
+            { name: "The Charlottesville Tundy Silk Ribbon | Orange", sku: "UVAO34",  size: '2" x 34"', wholesale: 30, msrp: 65, image: "TCC_-_Charlottsville_Orange_Ribbon_Studio.jpg?v=1787292094" },
+            { name: "The Georgetown DC Silk Ribbon",                  sku: "GTOWN34", size: '2" x 34"', wholesale: 30, msrp: 65, image: "TCC_-_GTOWN_Ribbon_Studio.jpg?v=1787292044" },
+            { name: "The South Bend Indiana Leprechaun Silk Ribbon",  sku: "NTRDM34", size: '2" x 34"', wholesale: 30, msrp: 65, image: "TCC_-_South_Bend_Indiana_Ribbon_Studio.jpg?v=1787292129" }
+          ]
+        },
+        {
+          /* ⚠ Shopify has this one at $95 retail, not $65. */
+          name: "Cities Collection",
+          products: [
+            { name: "The Dallas Silk Ribbon", sku: "DAL34", size: '2" x 34"', wholesale: 0, msrp: 95, image: "Gemini_Generated_Image_pv0rcwpv0rcwpv0r.jpg?v=1787625126" }
+          ]
+        }
+      ]
+    },
+
+    /* ===================================================================== */
+    {
+      name: "Silk-Cashmere Wraps — 42\"",
+      note: "Silk-cashmere blend, 42\" square.",
+      collections: [
+        {
+          name: "Cities Collection",
+          products: [
+            { name: "The Dallas Silk Cashmere Wrap", sku: "DAL42", size: '42" x 42"', wholesale: 0, msrp: 325, image: "Gemini_Generated_Image_n4adwbn4adwbn4ad.jpg?v=1789588244" }
+          ]
+        }
+      ]
+    },
+
+    /* ===================================================================== */
+    {
+      name: "Acrylic Trays",
+      note: "Custom printed acrylic, 16\" x 16\".",
+      collections: [
+        {
+          name: "Cities Collection",
+          products: [
+            { name: "The Chicago Acrylic Tray", sku: "CHITRAY-M", size: '16" x 16"', wholesale: 0, msrp: 225, image: "Screenshot2026-07-23at12.29.23PM.png?v=1784824175" },
+            { name: "The DC Tray",              sku: "DCTRAY-M",  size: '16" x 16"', wholesale: 0, msrp: 225, image: "TCC_-_DC_Tray_Studio_2_-_Edited.jpg?v=1788181012" },
+            { name: "The Manhattan Tray",       sku: "NYTRAY-M",  size: '16" x 16"', wholesale: 0, msrp: 225, image: "Gemini_Generated_Image_11bgv311bgv311bg_-_Edited.jpg?v=1788181207" }
+          ]
+        }
+      ]
+    },
+
+    /* ===================================================================== */
+    /* Nothing in Shopify matched these two yet — add products and they appear.
+       A category with no products is skipped, so they stay hidden until then. */
+    {
+      name: "Wood Trays",
+      note: "",
+      collections: [
+        { name: "Cities Collection", products: [
+          /* { name: "PRODUCT NAME", sku: "SKU", size: '16" x 16"', wholesale: 0, msrp: 0, image: "" } */
+        ] }
+      ]
+    },
+    {
+      name: "Napkins & Tablecloths",
+      note: "",
+      collections: [
+        { name: "Cities Collection", products: [
+          /* { name: "PRODUCT NAME", sku: "SKU", size: "", wholesale: 0, msrp: 0, image: "" } */
+        ] }
+      ]
+    }
+  ]
+};
+
+/* ===========================================================================
+   APPLICATION
+   ======================================================================== */
+(function () {
+  "use strict";
+
+  var $ = function (id) { return document.getElementById(id); };
+  var steps = Array.prototype.slice.call(document.querySelectorAll(".step"));
+  var LAST_INPUT_STEP = 6;          // step 7 is the success screen
+  var current = 0;
+  var submitting = false;
+  var resaleFile = null;            // { name, mimeType, size, base64 }
+  var sigDirty = false;
+
+  /* ---------- dropdowns ---------- */
+  function fillSelect(el, values) {
+    el.innerHTML = '<option value=""></option>' + values.map(function (v) { return '<option>' + v + '</option>'; }).join("");
+  }
+  fillSelect($("carrier"), CONFIG.CARRIERS);
+  fillSelect($("serviceLevel"), CONFIG.SERVICE_LEVELS);
+  if (CONFIG.TERMS_URL && CONFIG.TERMS_URL.indexOf("PASTE_") !== 0) $("termsLink").href = CONFIG.TERMS_URL;
+
+  /* ---------- catalogue ---------- */
+  function esc(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function money(n) {
+    return "$" + Number(n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  }
+  function placeholderTile(label) {
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600">' +
+      '<rect width="600" height="600" fill="#EDE9E1"/>' +
+      '<text x="300" y="295" text-anchor="middle" font-family="Georgia,serif" font-size="26" fill="#1B1B1F">' + esc(label) + '</text>' +
+      '<text x="300" y="332" text-anchor="middle" font-family="Helvetica,Arial" font-size="13" letter-spacing="3" fill="#8D8madeup">IMAGE</text></svg>';
+    return "data:image/svg+xml;utf8," + encodeURIComponent(svg.replace("#8D8madeup", "#8D8678"));
+  }
+
+  var catalogue = [];   // flat list, one entry per orderable product
+
+  (function buildCatalogue() {
+    var host = $("collections");
+    CONFIG.CATEGORIES.forEach(function (cat, ci) {
+      /* skip a category that has no products yet */
+      var total = cat.collections.reduce(function (n, c) { return n + c.products.length; }, 0);
+      if (!total) return;
+
+      var section = document.createElement("div");
+      section.className = "category";
+      var html = '<h3 class="cat-head">' + esc(cat.name) + '</h3>';
+      if (cat.note) html += '<p class="cat-note">' + esc(cat.note) + '</p>';
+
+      cat.collections.forEach(function (col, li) {
+        if (!col.products.length) return;
+        var cards = col.products.map(function (p, pi) {
+          var id = "q_" + ci + "_" + li + "_" + pi;
+          var wholesale = Number(p.wholesale) || 0;
+          var msrp = Number(p.msrp) || 0;
+          catalogue.push({
+            id: id, category: cat.name, collection: col.name, name: p.name,
+            sku: p.sku, size: p.size, price: wholesale, msrp: msrp
+          });
+          var src = p.image ? (/^https?:/i.test(p.image) ? p.image : CONFIG.IMG_BASE + p.image) : "";
+          var fallback = placeholderTile(p.name);
+          var img = src ? esc(src) : fallback;
+          var priceLine = wholesale > 0
+            ? '<span class="wholesale">' + money(wholesale) + '</span> <span class="spec" style="display:inline">wholesale</span>'
+            : '<span class="onrequest">Wholesale price on request</span>';
+          var msrpLine = msrp > 0 ? '<p class="spec msrp">MSRP ' + money(msrp) + '</p>' : '';
+          return '' +
+            '<div class="card">' +
+              /* a URL that 404s falls back to the labelled tile rather than a broken icon */
+              '<figure><img src="' + img + '" alt="' + esc(p.name) + '" loading="lazy" ' +
+                'data-fallback="' + fallback + '" ' +
+                'onerror="this.onerror=null;this.src=this.getAttribute(\'data-fallback\')"></figure>' +
+              '<div class="body">' +
+                '<p class="name">' + esc(p.name) + '</p>' +
+                '<p class="spec">' + esc(p.size) + (p.sku ? ' &nbsp;·&nbsp; ' + esc(p.sku) : '') + '</p>' +
+                '<p class="price">' + priceLine + '</p>' +
+                msrpLine +
+                '<div class="qty">' +
+                  '<button type="button" data-step-qty="-1" data-target="' + id + '" aria-label="Decrease quantity of ' + esc(p.name) + '">&minus;</button>' +
+                  '<input type="number" id="' + id + '" value="0" min="0" step="1" inputmode="numeric" ' +
+                    'aria-label="Quantity of ' + esc(p.name) + '">' +
+                  '<button type="button" data-step-qty="1" data-target="' + id + '" aria-label="Increase quantity of ' + esc(p.name) + '">+</button>' +
+                '</div>' +
+              '</div>' +
+            '</div>';
+        }).join("");
+        html += '<div class="collection"><h4 class="col-head">' + esc(col.name) + '</h4>' +
+                '<div class="grid">' + cards + '</div></div>';
+      });
+
+      section.innerHTML = html;
+      host.appendChild(section);
+    });
+  })();
+
+  $("collections").addEventListener("click", function (e) {
+    var btn = e.target.closest ? e.target.closest("[data-step-qty]") : null;
+    if (!btn) return;
+    var input = $(btn.getAttribute("data-target"));
+    var next = readQty(input) + parseInt(btn.getAttribute("data-step-qty"), 10);
+    input.value = next < 0 ? 0 : next;
+    refresh();
+  });
+  $("collections").addEventListener("input", function (e) {
+    if (e.target.type !== "number") return;
+    var cleaned = e.target.value.replace(/[^0-9]/g, "");
+    if (cleaned !== e.target.value) e.target.value = cleaned;
+    refresh();
+  });
+  $("collections").addEventListener("blur", function (e) {
+    if (e.target.type === "number") { e.target.value = readQty(e.target); refresh(); }
+  }, true);
+
+  function readQty(el) {
+    var n = parseInt(el.value, 10);
+    return (isNaN(n) || n < 0) ? 0 : n;
+  }
+
+  function selections() {
+    return catalogue.map(function (p) {
+      return { category: p.category, collection: p.collection, name: p.name, sku: p.sku,
+               size: p.size, price: p.price, msrp: p.msrp, quantity: readQty($(p.id)) };
+    }).filter(function (p) { return p.quantity > 0; });
+  }
+
+  /* ---------- file upload ---------- */
+  var drop = $("drop");
+  $("pickFile").addEventListener("click", function () { $("resaleFile").click(); });
+  $("resaleFile").addEventListener("change", function (e) { takeFile(e.target.files[0]); });
+  ["dragenter", "dragover"].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add("over"); });
+  });
+  ["dragleave", "drop"].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove("over"); });
+  });
+  drop.addEventListener("drop", function (e) {
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) takeFile(e.dataTransfer.files[0]);
+  });
+  $("clearFile").addEventListener("click", function () {
+    resaleFile = null; $("resaleFile").value = "";
+    $("fileChip").classList.remove("on"); refresh();
+  });
+
+  function takeFile(file) {
+    $("e_resaleFile").classList.remove("on");
+    if (!file) return;
+    var okType = /^(application\/pdf|image\/)/.test(file.type) || /\.(pdf|jpe?g|png|webp|heic)$/i.test(file.name);
+    if (!okType || file.size > CONFIG.MAX_UPLOAD_MB * 1024 * 1024) {
+      $("e_resaleFile").classList.add("on");
+      resaleFile = null; $("resaleFile").value = ""; $("fileChip").classList.remove("on");
+      return;
+    }
+    var reader = new FileReader();
+    reader.onload = function () {
+      resaleFile = {
+        name: file.name,
+        mimeType: file.type || "application/octet-stream",
+        size: file.size,
+        base64: String(reader.result).split(",")[1] || ""
+      };
+      $("fileName").textContent = file.name + "  (" + Math.max(1, Math.round(file.size / 1024)) + " KB)";
+      $("fileChip").classList.add("on");
+      refresh();
+    };
+    reader.onerror = function () { $("e_resaleFile").classList.add("on"); };
+    reader.readAsDataURL(file);
+  }
+
+  /* ---------- signature pad ---------- */
+  var canvas = $("sigCanvas"), ctx = canvas.getContext("2d"), drawing = false;
+  function sizeCanvas() {
+    var ratio = window.devicePixelRatio || 1;
+    var rect = canvas.getBoundingClientRect();
+    var data = sigDirty ? canvas.toDataURL() : null;
+    canvas.width = rect.width * ratio;
+    canvas.height = rect.height * ratio;
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    ctx.lineWidth = 2; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = "#1B1B1F";
+    if (data) { var img = new Image(); img.onload = function () { ctx.drawImage(img, 0, 0, rect.width, rect.height); }; img.src = data; }
+  }
+  function pos(e) {
+    var r = canvas.getBoundingClientRect();
+    var p = e.touches ? e.touches[0] : e;
+    return { x: p.clientX - r.left, y: p.clientY - r.top };
+  }
+  function startDraw(e) { e.preventDefault(); drawing = true; var p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); }
+  function moveDraw(e) {
+    if (!drawing) return;
+    e.preventDefault();
+    var p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke();
+    sigDirty = true; $("sigWrap").classList.remove("bad"); $("e_signature").classList.remove("on");
+  }
+  function endDraw() { drawing = false; }
+  canvas.addEventListener("mousedown", startDraw); canvas.addEventListener("mousemove", moveDraw);
+  window.addEventListener("mouseup", endDraw);
+  canvas.addEventListener("touchstart", startDraw, { passive: false });
+  canvas.addEventListener("touchmove", moveDraw, { passive: false });
+  canvas.addEventListener("touchend", endDraw);
+  $("sigClear").addEventListener("click", function () {
+    ctx.clearRect(0, 0, canvas.width, canvas.height); sigDirty = false;
+  });
+  window.addEventListener("resize", sizeCanvas);
+
+  /* ---------- dates ---------- */
+  function parseYMD(v) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v || "");
+    return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null;
+  }
+  function prettyDate(v) {
+    var d = parseYMD(v);
+    if (!d) return "";
+    var M = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    return M[d.getMonth()] + " " + d.getDate() + ", " + d.getFullYear();
+  }
+  function daysUntil(v) {
+    var d = parseYMD(v);
+    if (!d) return null;
+    var t = new Date(); t.setHours(0, 0, 0, 0);
+    return Math.round((d - t) / 86400000);
+  }
+
+  /* ---------- reading the form ---------- */
+  function txt(id) { var el = $(id); return el ? String(el.value).trim() : ""; }
+
+  function payload() {
+    var items = selections();
+    /* items with no wholesale price set are counted in units but not in the
+       subtotal, so a partner is never shown a total that omits them silently */
+    var subtotal = items.reduce(function (s, p) { return s + p.price * p.quantity; }, 0);
+    return {
+      storeName: txt("storeName"),
+      contactName: txt("contactName"),
+      contactEmail: txt("contactEmail"),
+      contactPhone: txt("contactPhone"),
+      billingAddress: txt("billingAddress"),
+      invoicingContact: txt("invoicingContact"),
+      items: items,
+      totalUnits: items.reduce(function (s, p) { return s + p.quantity; }, 0),
+      subtotal: Math.round(subtotal * 100) / 100,
+      deliveryDate: txt("deliveryDate"),
+      carrier: txt("carrier"),
+      carrierAccount: txt("carrierAccount"),
+      serviceLevel: txt("serviceLevel"),
+      shippingNotes: txt("shippingNotes"),
+      merchNotes: txt("merchNotes"),
+      termsAccepted: $("acceptTerms").checked ? "Yes" : "No",
+      signerName: txt("signerName"),
+      resaleFile: resaleFile,
+      signature: sigDirty ? { name: "signature.png", mimeType: "image/png", base64: canvas.toDataURL("image/png").split(",")[1] } : null
+    };
+  }
+
+  /* ---------- live refresh ---------- */
+  function setPair(id, v) {
+    var el = $(id);
+    if (v) { el.textContent = v; el.classList.remove("empty"); }
+    else { el.textContent = "—"; el.classList.add("empty"); }
+  }
+
+  function refresh() {
+    var d = payload();
+
+    $("tallyUnits").textContent = d.totalUnits;
+    $("tallySubtotal").textContent = money(d.subtotal);
+    var unpriced = d.items.filter(function (i) { return !(i.price > 0); }).length;
+    $("tallyNote").textContent = unpriced
+      ? unpriced + (unpriced === 1 ? " item is" : " items are") + " priced on request and not included in the subtotal."
+      : "";
+
+    /* minimum-order notice (informational only) */
+    if (CONFIG.SHOW_MINIMUM_NOTICE && d.totalUnits > 0) {
+      var msgs = [];
+      if (d.subtotal < CONFIG.MINIMUM_ORDER_VALUE) {
+        msgs.push("Our standard reorder minimum is " + money(CONFIG.MINIMUM_ORDER_VALUE) + ".");
+      }
+      var under = d.items.filter(function (i) { return i.quantity < CONFIG.MINIMUM_UNITS_PER_SKU; });
+      if (under.length) {
+        msgs.push("Minimum order quantity is " + CONFIG.MINIMUM_UNITS_PER_SKU + " units per design: " +
+          under.map(function (i) { return i.name + " (" + i.quantity + ")"; }).join(", ") + ".");
+      }
+      $("moqAlert").innerHTML = msgs.length ? msgs.join(" ") + " You can still submit — our team will confirm what we can accommodate." : "";
+      $("moqAlert").classList.toggle("on", msgs.length > 0);
+    } else {
+      $("moqAlert").classList.remove("on");
+    }
+
+    var days = daysUntil(d.deliveryDate);
+    $("leadAlert").classList.toggle("on", days !== null && days < CONFIG.LEAD_TIME_DAYS);
+
+    /* review */
+    setPair("r_store", d.storeName);
+    setPair("r_contact", [d.contactName, d.contactEmail, d.contactPhone].filter(Boolean).join("\n"));
+    setPair("r_address", d.billingAddress);
+    setPair("r_resale", resaleFile ? resaleFile.name : "");
+    setPair("r_products", d.items.map(function (i) {
+      return i.price > 0
+        ? i.name + " · " + i.size + " — " + i.quantity + " × " + money(i.price) + " = " + money(i.price * i.quantity)
+        : i.name + " · " + i.size + " — " + i.quantity + " × price on request";
+    }).join("\n"));
+    setPair("r_units", String(d.totalUnits));
+    setPair("r_subtotal", money(d.subtotal));
+    setPair("r_delivery", prettyDate(d.deliveryDate));
+    setPair("r_shipping", [d.carrier && ("Carrier: " + d.carrier), d.carrierAccount && ("Account: " + d.carrierAccount),
+      d.serviceLevel && ("Service: " + d.serviceLevel), d.shippingNotes].filter(Boolean).join("\n") ||
+      (d.totalUnits ? "The Clearly Collective will invoice shipping separately." : ""));
+    setPair("r_merch", d.merchNotes);
+  }
+  document.addEventListener("input", refresh);
+  document.addEventListener("change", refresh);
+
+  /* ---------- per-step validation ---------- */
+  function mark(el, bad) { if (el) el.classList.toggle("bad", !!bad); }
+  function line(id, on) { var e = $(id); if (e) e.classList.toggle("on", !!on); }
+
+  function validateStep(n) {
+    var bad = [];
+    var first = null;
+
+    if (n === 1) {
+      steps[1].querySelectorAll("[data-required]").forEach(function (el) {
+        var empty = String(el.value).trim() === "";
+        var badEmail = !empty && el.hasAttribute("data-email") &&
+          !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(el.value.trim());
+        var isBad = empty || badEmail;
+        mark(el, isBad); line("e_" + el.id, isBad);
+        if (isBad) { bad.push(el.getAttribute("data-label")); first = first || el; }
+      });
+    }
+
+    if (n === 2 && payload().totalUnits === 0) {
+      bad.push("at least one product");
+      $("moqAlert").innerHTML = "Please enter a quantity for at least one product before continuing.";
+      $("moqAlert").classList.add("on");
+      first = $("collections");
+    }
+
+    if (n === 6) {
+      var d = payload();
+      var noAccept = !$("acceptTerms").checked;
+      $("acceptWrap").classList.toggle("bad", noAccept); line("e_acceptTerms", noAccept);
+      if (noAccept) { bad.push("terms acceptance"); first = first || $("acceptTerms"); }
+
+      var noName = d.signerName === "";
+      mark($("signerName"), noName); line("e_signerName", noName);
+      if (noName) { bad.push("Name of Signer"); first = first || $("signerName"); }
+
+      var noSig = !sigDirty;
+      $("sigWrap").classList.toggle("bad", noSig); line("e_signature", noSig);
+      if (noSig) { bad.push("signature"); first = first || $("sigWrap"); }
+    }
+
+    if (bad.length && first && first.focus) { try { first.focus(); } catch (e) {} }
+    if (bad.length && first) first.scrollIntoView({ behavior: "smooth", block: "center" });
+    return bad.length === 0;
+  }
+
+  /* ---------- navigation ---------- */
+  function show(n) {
+    current = n;
+    steps.forEach(function (s) { s.classList.toggle("on", Number(s.dataset.step) === n); });
+    $("backBtn").classList.toggle("hide", n === 0 || n === 7);
+    $("navbar").classList.toggle("hide", n === 7);
+    $("nextBtn").classList.toggle("hide", n === 0);
+    $("nextBtn").innerHTML = (n === LAST_INPUT_STEP) ? "Submit Order" : "Continue &nbsp;&rarr;";
+    $("pct").textContent = Math.round((n / LAST_INPUT_STEP) * 100) + "%";
+    if (n === 6) setTimeout(sizeCanvas, 30);
+    window.scrollTo(0, 0);
+    refresh();
+  }
+
+  document.querySelectorAll("[data-go]").forEach(function (b) {
+    b.addEventListener("click", function () { show(Number(b.getAttribute("data-go"))); });
+  });
+  $("backBtn").addEventListener("click", function () { if (current > 0) show(current - 1); });
+  $("nextBtn").addEventListener("click", function () {
+    if (submitting) return;
+    if (!validateStep(current)) return;
+    if (current < LAST_INPUT_STEP) { show(current + 1); return; }
+    submit();
+  });
+
+  /* ---------- submission ---------- */
+  function alertErr(msg) {
+    var a = $("submitAlert");
+    if (msg) { a.textContent = msg; a.classList.add("on"); a.scrollIntoView({ behavior: "smooth", block: "center" }); }
+    else { a.textContent = ""; a.classList.remove("on"); }
+  }
+  function busy(on) {
+    submitting = on;
+    $("nextBtn").disabled = on;
+    $("backBtn").disabled = on;
+    $("nextBtn").innerHTML = on ? '<span class="spin"></span>Submitting…' : "Submit Order";
+  }
+
+  function send(data) {
+    var inAppsScript = (typeof google !== "undefined" && google.script && google.script.run);
+    if (inAppsScript) {
+      return new Promise(function (resolve, reject) {
+        google.script.run
+          .withSuccessHandler(function (res) {
+            var r = (typeof res === "string") ? JSON.parse(res) : res;
+            (r && r.ok) ? resolve(r) : reject(new Error((r && r.error) || "Rejected by the server."));
+          })
+          .withFailureHandler(function (err) { reject(new Error(err && err.message ? err.message : "Server error.")); })
+          .submitOrder(data);
+      });
+    }
+    if (!CONFIG.APPS_SCRIPT_URL || CONFIG.APPS_SCRIPT_URL.indexOf("PASTE_") === 0) {
+      return Promise.reject(new Error("This form is not connected yet."));
+    }
+    return fetch(CONFIG.APPS_SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(data),
+      redirect: "follow"
+    }).then(function (res) {
+      return res.text().then(function (body) {
+        var r;
+        try { r = JSON.parse(body); } catch (e) { throw new Error("Unexpected response from the server."); }
+        if (!res.ok || !r.ok) throw new Error(r.error || "The server rejected the submission.");
+        return r;
+      });
+    });
+  }
+
+  function submit() {
+    var data = payload();
+    alertErr("");
+    busy(true);
+    send(data).then(function (res) {
+      busy(false);
+      $("s_orderId").textContent = res.orderId || "(not returned)";
+      $("s_store").textContent = data.storeName;
+      $("s_units").textContent = String(data.totalUnits);
+      $("s_subtotal").textContent = money(data.subtotal);
+      $("s_delivery").textContent = prettyDate(data.deliveryDate) || "Not specified";
+      show(7);
+    }).catch(function (err) {
+      busy(false);
+      alertErr("We couldn't submit this order. Your information has not been lost. Please try again." +
+        (err && err.message ? " (" + err.message + ")" : ""));
+    });
+  }
+
+  /* ---------- start over ---------- */
+  $("againBtn").addEventListener("click", function () {
+    document.querySelectorAll("input, textarea, select").forEach(function (el) {
+      if (el.type === "checkbox") el.checked = false;
+      else if (el.type === "number") el.value = "0";
+      else if (el.type !== "file") el.value = "";
+    });
+    $("resaleFile").value = ""; resaleFile = null; $("fileChip").classList.remove("on");
+    ctx.clearRect(0, 0, canvas.width, canvas.height); sigDirty = false;
+    document.querySelectorAll(".bad").forEach(function (el) { el.classList.remove("bad"); });
+    document.querySelectorAll(".errline.on, .alert.on").forEach(function (el) { el.classList.remove("on"); });
+    show(0);
+  });
+
+  /* ---------- boot ---------- */
+  show(0);
+  sizeCanvas();
+})();
+</script>
+</body>
+</html>
