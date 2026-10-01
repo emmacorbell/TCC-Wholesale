@@ -113,6 +113,7 @@ input.bad,select.bad,textarea.bad{border-color:var(--err)}
 .card .price .spec{font-family:var(--serif);font-size:14px;letter-spacing:0;text-transform:none;font-style:italic;color:var(--ink-soft)}
 .card .msrp{font-family:var(--serif);font-size:14px;letter-spacing:0;text-transform:none;font-style:italic;color:var(--ink-soft);margin:0 0 14px}
 .card .wholesale{font-size:17px}
+.card .price:empty,.card .msrp:empty{display:none}
 
 /* live stock labels */
 .stock{font-family:var(--sans);font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--ink);margin:4px 0 16px;line-height:1.6}
@@ -425,7 +426,7 @@ var CONFIG = {
 
   /* The Web app URL from deploying Code.gs (ends in /exec). It saves orders,
      sends the confirmation email, and serves the production timeline. */
-  APPS_SCRIPT_URL: "PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE",
+  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbyUGjZ6CLs9Mw2J6VSY4BQTjFe9Y4oLMrbPNtnj6QXwrd6rEDy9cbZiFSzESaF7Z8Ur/exec",
 
   /* Link shown on the terms step. */
   TERMS_URL: "PASTE_LINK_TO_YOUR_WHOLESALE_TERMS_PDF_HERE",
@@ -487,6 +488,13 @@ var CONFIG = {
 
   /* Show the exact number on hand ("12 available"), or just "In stock". */
   SHOW_STOCK_COUNT: true,
+
+  /* PRICING: wholesale is a fixed share of retail. MSRP is pulled live from
+     Shopify (by SKU); the msrp typed into each product line below is only the
+     fallback if Shopify can't be reached. Set WHOLESALE_FROM_MSRP to false to
+     use the typed-in wholesale numbers instead. */
+  WHOLESALE_FROM_MSRP: true,
+  WHOLESALE_RATIO: 0.5,
 
   /* true: partners can't continue with 1 to 24 units of a custom-order design.
      false: they see a warning but can still submit. */
@@ -732,6 +740,7 @@ var CONFIG = {
   function money(n) {
     return "$" + Number(n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   }
+  function halve(m) { return Math.round(Number(m || 0) * CONFIG.WHOLESALE_RATIO * 100) / 100; }
   function placeholderTile(label) {
     var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600">' +
       '<rect width="600" height="600" fill="#EDE9E1"/>' +
@@ -765,8 +774,8 @@ var CONFIG = {
         if (!col.products.length) return;
         var cards = col.products.map(function (p, pi) {
           var id = "q_" + ci + "_" + li + "_" + pi;
-          var wholesale = Number(p.wholesale) || 0;
           var msrp = Number(p.msrp) || 0;
+          var wholesale = CONFIG.WHOLESALE_FROM_MSRP ? halve(msrp) : (Number(p.wholesale) || 0);
           var entry = {
             id: id, category: cat.name, collection: col.name, name: p.name,
             sku: p.sku, size: p.size, price: wholesale, msrp: msrp,
@@ -781,7 +790,6 @@ var CONFIG = {
           var priceLine = wholesale > 0
             ? '<span class="wholesale">' + money(wholesale) + '</span> <span class="spec" style="display:inline">wholesale</span>'
             : '';
-          var msrpLine = msrp > 0 ? '<p class="spec msrp">MSRP ' + money(msrp) + '</p>' : '';
           return '' +
             '<div class="card">' +
               /* a URL that 404s falls back to the labelled tile rather than a broken icon */
@@ -791,8 +799,8 @@ var CONFIG = {
               '<div class="body">' +
                 '<p class="name">' + esc(p.name) + '</p>' +
                 '<p class="spec">' + esc(p.size) + (p.sku ? ' &nbsp;·&nbsp; ' + esc(p.sku) : '') + '</p>' +
-                (priceLine ? '<p class="price">' + priceLine + '</p>' : '') +
-                msrpLine +
+                '<p class="price" id="pr_' + id + '">' + priceLine + '</p>' +
+                '<p class="spec msrp" id="ms_' + id + '">' + (msrp > 0 ? 'MSRP ' + money(msrp) : '') + '</p>' +
                 '<p class="stock ' + (shopifyOn ? 'stock--loading' : 'stock--unknown') + '" id="s_' + id + '">' +
                   (shopifyOn ? 'Checking stock&hellip;' : '') + '</p>' +
                 '<div class="qty">' +
@@ -836,10 +844,10 @@ var CONFIG = {
      token. If it's missing, fall back to the yes/no availableForSale flag. */
   var Q_WITH_QTY =
     "query($c:String){products(first:250,after:$c){pageInfo{hasNextPage endCursor}" +
-    "nodes{variants(first:100){nodes{sku availableForSale quantityAvailable}}}}}";
+    "nodes{variants(first:100){nodes{sku availableForSale quantityAvailable price{amount}}}}}}";
   var Q_NO_QTY =
     "query($c:String){products(first:250,after:$c){pageInfo{hasNextPage endCursor}" +
-    "nodes{variants(first:100){nodes{sku availableForSale}}}}}";
+    "nodes{variants(first:100){nodes{sku availableForSale price{amount}}}}}}";
 
   function fetchAllVariants(query) {
     var out = [];
@@ -865,7 +873,9 @@ var CONFIG = {
         variants.forEach(function (v) {
           var k = normSku(v.sku);
           if (!k) return;
-          var rec = bySku[k] || (bySku[k] = { qty: null, forSale: false });
+          var rec = bySku[k] || (bySku[k] = { qty: null, forSale: false, price: 0 });
+          var amt = v.price ? parseFloat(v.price.amount) : 0;
+          if (amt > 0 && !rec.price) rec.price = amt;
           if (typeof v.quantityAvailable === "number") rec.qty = (rec.qty || 0) + Math.max(0, v.quantityAvailable);
           rec.forSale = rec.forSale || !!v.availableForSale;
         });
@@ -875,6 +885,11 @@ var CONFIG = {
           else if (rec.qty !== null) { p.stock = rec.qty > 0 ? "in" : "custom"; p.available = rec.qty; }
           else { p.stock = rec.forSale ? "in" : "custom"; p.available = null; }
           paintStock(p);
+          if (rec && rec.price > 0) {
+            p.msrp = rec.price;
+            if (CONFIG.WHOLESALE_FROM_MSRP) p.price = halve(rec.price);
+          }
+          paintPrice(p);
         });
         refresh();
       })
@@ -883,6 +898,13 @@ var CONFIG = {
         catalogue.forEach(function (p) { p.stock = "unknown"; p.available = null; paintStock(p); });
         refresh();
       });
+  }
+
+  function paintPrice(p) {
+    var pr = $("pr_" + p.id), ms = $("ms_" + p.id);
+    if (pr) pr.innerHTML = p.price > 0
+      ? '<span class="wholesale">' + money(p.price) + '</span> <span class="spec" style="display:inline">wholesale</span>' : '';
+    if (ms) ms.textContent = p.msrp > 0 ? "MSRP " + money(p.msrp) : "";
   }
 
   function paintStock(p) {
