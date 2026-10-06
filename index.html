@@ -528,6 +528,12 @@ var CONFIG = {
   /* Leaves out any product whose Shopify product type CONTAINS one of these words
      (not case sensitive). "limited edition" covers every limited edition scarf, tray, etc. */
   EXCLUDE_TYPES: ["limited edition"],
+  /* Hides any Shopify variant whose title CONTAINS one of these (not case sensitive).
+     Partners order the standard version only, so the custom made-to-order variant is left off. */
+  EXCLUDE_VARIANTS: ["custom made to order"],
+  /* Variant titles that are NOT added to the product name, so a "Standard Order" variant
+     shows as just the scarf's name. Other variant titles (colours, say) are still shown. */
+  PLAIN_VARIANT_TITLES: ["default title", "standard order"],
   /* Words that stay in capitals when Shopify's ALL CAPS titles are tidied. */
   KEEP_UPPERCASE: ["DC", "NC", "NY", "UT", "UVA", "UGA", "UNC", "USA", "UK", "TCC"],
 
@@ -921,6 +927,8 @@ var CONFIG = {
     var exSku = {};
     (CONFIG.EXCLUDE_SKUS || []).forEach(function (s) { exSku[normSku(s)] = true; });
     var exTypes = (CONFIG.EXCLUDE_TYPES || []).map(function (s) { return String(s).toLowerCase(); });
+    var exVars = (CONFIG.EXCLUDE_VARIANTS || []).map(function (s) { return String(s).toLowerCase(); });
+    var plainVars = (CONFIG.PLAIN_VARIANT_TITLES || []).map(function (s) { return String(s).toLowerCase(); });
     var rules = CONFIG.COLLECTION_TAGS || [];
 
     products.forEach(function (prod) {
@@ -941,14 +949,17 @@ var CONFIG = {
         cat = extra[key] || (extra[key] = { name: key, note: "", timeline: null, types: [], collections: [], map: {} });
       }
       var size = parseSize(prod.description);
-      var nodes = (prod.variants && prod.variants.nodes) || [];
+      var nodes = ((prod.variants && prod.variants.nodes) || []).filter(function (v) {
+        var vt = String(v.title || "").toLowerCase();
+        return !exVars.some(function (w) { return w && vt.indexOf(w) > -1; });
+      });
       nodes.forEach(function (v) {
         var sku = normSku(v.sku);
         if (!sku || seen[sku] || exSku[sku]) return;
         seen[sku] = true;
         var t = typed[sku] || {};
         var name = cleanTitle(prod.title);
-        if (nodes.length > 1 && v.title && !/^default title$/i.test(v.title)) name += " | " + v.title;
+        if (nodes.length > 1 && v.title && plainVars.indexOf(String(v.title).toLowerCase()) < 0) name += " | " + v.title;
         var line = {
           name: name, sku: v.sku,
           size: size || t.size || "",
