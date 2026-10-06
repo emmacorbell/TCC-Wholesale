@@ -500,6 +500,37 @@ var CONFIG = {
      false: they see a warning but can still submit. */
   ENFORCE_CUSTOM_MOQ: true,
 
+  /* -------------------------------------------------------------------------
+     LIVE CATALOGUE
+     true: the product list (names, images, retail prices, sizes, and which
+     collection each design sits in) is read from Shopify every time the form
+     loads, so new products appear on their own. The typed catalogue below is
+     the fallback: it is used if Shopify can't be reached or returns nothing.
+
+     How Shopify data is sorted into the page:
+       Category    from the product's Shopify "Product type", matched against
+                   the "types" list on each category below. A type with no
+                   match gets its own category at the bottom.
+       Collection  from the product's Shopify tags, using COLLECTION_TAGS.
+                   The first matching tag wins. No match goes under
+                   OTHER_COLLECTION.
+     Wholesale prices, lead-time mappings and sizes you typed for a SKU below
+     are kept when that SKU is also found in Shopify.
+     ---------------------------------------------------------------------- */
+  LIVE_CATALOGUE: true,
+  COLLECTION_TAGS: [
+    { tag: "collegiate", name: "Collegiate Collection" },
+    { tag: "summers",    name: "Summers Collection" },
+    { tag: "city",       name: "Cities Collection" }
+  ],
+  OTHER_COLLECTION: "More Designs",
+  EXCLUDE_SKUS: [],    // e.g. ["NYCARD"] to keep one product off the form
+  /* Leaves out any product whose Shopify product type CONTAINS one of these words
+     (not case sensitive). "limited edition" covers every limited edition scarf, tray, etc. */
+  EXCLUDE_TYPES: ["limited edition"],
+  /* Words that stay in capitals when Shopify's ALL CAPS titles are tidied. */
+  KEEP_UPPERCASE: ["DC", "NC", "NY", "UT", "UVA", "UGA", "UNC", "USA", "UK", "TCC"],
+
   CARRIERS: ["FedEx", "UPS", "DHL", "USPS", "Other"],
   SERVICE_LEVELS: ["Ground", "2-Day", "Overnight / Express", "International Economy", "International Priority"],
 
@@ -535,6 +566,7 @@ var CONFIG = {
     /* ===================================================================== */
     {
       name: "Silk Scarves, 38\" × 38\"",
+      types: ["Scarf", "Limited Edition Scarf"],
       /* which row of the Product & Cost Database sets this category's lead time */
       timeline: { product: '38x38" Silk Scarf', vendor: "Gina" },
       note: "100% silk twill, hand-rolled and hand-sewn. Gift-ready packaging included.",
@@ -600,6 +632,7 @@ var CONFIG = {
     /* ===================================================================== */
     {
       name: "Silk Pocket Squares, 12\" × 12\"",
+      types: ["Pocket Square"],
       timeline: { product: '12x12" Silk Scarf', vendor: "Gina" },
       note: "100% silk twill, hand-rolled and hand-sewn.",
       collections: [
@@ -632,6 +665,7 @@ var CONFIG = {
     /* ===================================================================== */
     {
       name: "Twillies",
+      types: ["Ribbon"],
       timeline: { product: "2 x 34 Silk Twilly", vendor: "Gina" },
       note: "100% silk twill ribbon scarf.",
       collections: [
@@ -657,6 +691,7 @@ var CONFIG = {
     /* ===================================================================== */
     {
       name: "Silk Cashmere Wraps, 42\" × 42\"",
+      types: ["Cashmere"],
       timeline: { product: '42x42" Cashmere Scarf', vendor: "Gina" },
       note: "Silk-cashmere blend, 42\" square.",
       collections: [
@@ -672,13 +707,15 @@ var CONFIG = {
     /* ===================================================================== */
     {
       name: "Acrylic Trays",
+      types: ["Tray"],
       timeline: { product: "Acrylic Tray", vendor: "Rebecca", size: "16 x 16" },
-      note: "Custom printed acrylic, 16\" x 16\".",
+      note: "Custom printed acrylic.",
       collections: [
         {
           name: "Cities Collection",
           products: [
-            { name: "The Chicago Acrylic Tray", sku: "CHITRAY-M", size: '16" x 16"', wholesale: 0, msrp: 225, image: "Screenshot2026-07-23at12.29.23PM.png?v=1784824175" },
+            { name: "The Chicago Acrylic Tray", sku: "CHITRAY-M", size: '15.75 x 11.75 x 2 inches', wholesale: 0, msrp: 225, image: "Screenshot2026-07-23at12.29.23PM.png?v=1784824175" },
+            { name: "The Chicago Acrylic Valet Tray", sku: "52720039657754", size: '8 x 11.75 x 2 inches', wholesale: 0, msrp: 115, image: "Screenshot2026-07-23at12.29.23PM.png?v=1784824175" },
             { name: "The DC Tray",              sku: "DCTRAY-M",  size: '16" x 16"', wholesale: 0, msrp: 225, image: "TCC_-_DC_Tray_Studio_2_-_Edited.jpg?v=1788181012" },
             { name: "The Manhattan Tray",       sku: "NYTRAY-M",  size: '16" x 16"', wholesale: 0, msrp: 225, image: "Gemini_Generated_Image_11bgv311bgv311bg_-_Edited.jpg?v=1788181207" }
           ]
@@ -691,6 +728,7 @@ var CONFIG = {
        A category with no products is skipped, so they stay hidden until then. */
     {
       name: "Wood Trays",
+      types: ["Wood Tray"],
       timeline: { product: "Wood Tray", vendor: "Rebecca" },
       note: "",
       collections: [
@@ -701,6 +739,7 @@ var CONFIG = {
     },
     {
       name: "Napkins & Tablecloths",
+      types: ["Napkin", "Tablecloth"],
       note: "",
       collections: [
         { name: "Cities Collection", products: [
@@ -755,9 +794,14 @@ var CONFIG = {
     CONFIG.SHOPIFY_STORE_DOMAIN.indexOf("PASTE_") !== 0 && CONFIG.SHOPIFY_STOREFRONT_TOKEN.indexOf("PASTE_") !== 0);
   var MOQ = CONFIG.MINIMUM_UNITS_PER_SKU;
 
-  (function buildCatalogue() {
+  function buildCatalogue(categories) {
     var host = $("collections");
-    CONFIG.CATEGORIES.forEach(function (cat, ci) {
+    /* start clean so the page can be rebuilt once live Shopify data arrives */
+    catalogue.length = 0;
+    Object.keys(byId).forEach(function (k) { delete byId[k]; });
+    host.innerHTML = "";
+    $("catnav").innerHTML = "";
+    categories.forEach(function (cat, ci) {
       /* skip a category that has no products yet */
       var total = cat.collections.reduce(function (n, c) { return n + c.products.length; }, 0);
       if (!total) return;
@@ -798,7 +842,7 @@ var CONFIG = {
                 'onerror="this.onerror=null;this.src=this.getAttribute(\'data-fallback\')"></figure>' +
               '<div class="body">' +
                 '<p class="name">' + esc(p.name) + '</p>' +
-                '<p class="spec" id="sz_' + id + '">' + esc(p.size) + (p.sku ? ' &nbsp;·&nbsp; ' + esc(p.sku) : '') + '</p>' +
+                '<p class="spec" id="sz_' + id + '">' + esc(p.size) + (p.sku ? (p.size ? ' &nbsp;·&nbsp; ' : '') + esc(p.sku) : '') + '</p>' +
                 '<p class="price" id="pr_' + id + '">' + priceLine + '</p>' +
                 '<p class="spec msrp" id="ms_' + id + '">' + (msrp > 0 ? 'MSRP ' + money(msrp) : '') + '</p>' +
                 '<p class="stock ' + (shopifyOn ? 'stock--loading' : 'stock--unknown') + '" id="s_' + id + '">' +
@@ -819,7 +863,8 @@ var CONFIG = {
       section.innerHTML = html;
       host.appendChild(section);
     });
-  })();
+  }
+  buildCatalogue(CONFIG.CATEGORIES);
 
   /* ---------- live Shopify inventory ---------- */
   function normSku(s) { return String(s || "").trim().toUpperCase(); }
@@ -836,6 +881,100 @@ var CONFIG = {
     var re = new RegExp(N + U + "\\s*[x\u00d7]\\s*" + N + U + "(?:\\s*[x\u00d7]\\s*" + N + U + ")?", "i");
     var m = re.exec(seg) || re.exec(t);
     return m ? m[0].replace(/\s*[x\u00d7]\s*/gi, " x ").replace(/\s+/g, " ").trim() : "";
+  }
+
+  var liveProducts = [];   // product records from Shopify, filled in by fetchAllVariants()
+
+  /* "THE ORANGE AUSTIN SCARF | COMING SOON" -> "The Orange Austin Scarf" */
+  function cleanTitle(t) {
+    var s = String(t || "").trim(), prev;
+    do {
+      prev = s;
+      s = s.replace(/\s*\|\s*(coming soon|shipping[^|]*|waitlist|pre-?order)\s*$/i, "");
+    } while (s !== prev);
+    if (s === s.toUpperCase()) {
+      var keep = {};
+      (CONFIG.KEEP_UPPERCASE || []).forEach(function (w) { keep[String(w).toUpperCase()] = true; });
+      s = s.toLowerCase().replace(/[a-z0-9][a-z0-9'’.]*/g, function (w) {
+        if (keep[w.replace(/[^a-z0-9]/g, "").toUpperCase()]) return w.toUpperCase();
+        return w.charAt(0).toUpperCase() + w.slice(1);
+      });
+    }
+    return s;
+  }
+
+  /* Turns the Shopify product list into the same structure as CONFIG.CATEGORIES. */
+  function liveCategories(products) {
+    var typed = {};   // what was typed for each SKU: wholesale, size, timeline
+    CONFIG.CATEGORIES.forEach(function (c) {
+      c.collections.forEach(function (col) {
+        col.products.forEach(function (p) { if (p.sku) typed[normSku(p.sku)] = p; });
+      });
+    });
+    var cats = CONFIG.CATEGORIES.map(function (c) {
+      return { name: c.name, note: c.note || "", timeline: c.timeline || null,
+               types: (c.types || []).map(function (t) { return String(t).toLowerCase(); }),
+               collections: [], map: {} };
+    });
+    var extra = {};
+    var seen = {};
+    var exSku = {};
+    (CONFIG.EXCLUDE_SKUS || []).forEach(function (s) { exSku[normSku(s)] = true; });
+    var exTypes = (CONFIG.EXCLUDE_TYPES || []).map(function (s) { return String(s).toLowerCase(); });
+    var rules = CONFIG.COLLECTION_TAGS || [];
+
+    products.forEach(function (prod) {
+      var type = String(prod.productType || "").trim();
+      var typeLc = type.toLowerCase();
+      if (exTypes.some(function (w) { return w && typeLc.indexOf(w) > -1; })) return;
+      var tags = (prod.tags || []).map(function (t) { return String(t).toLowerCase(); });
+      var colName = CONFIG.OTHER_COLLECTION || "More Designs";
+      for (var i = 0; i < rules.length; i++) {
+        if (tags.indexOf(String(rules[i].tag).toLowerCase()) > -1) { colName = rules[i].name; break; }
+      }
+      var cat = null;
+      for (var j = 0; j < cats.length; j++) {
+        if (cats[j].types.indexOf(type.toLowerCase()) > -1) { cat = cats[j]; break; }
+      }
+      if (!cat) {
+        var key = type || "Other";
+        cat = extra[key] || (extra[key] = { name: key, note: "", timeline: null, types: [], collections: [], map: {} });
+      }
+      var size = parseSize(prod.description);
+      var nodes = (prod.variants && prod.variants.nodes) || [];
+      nodes.forEach(function (v) {
+        var sku = normSku(v.sku);
+        if (!sku || seen[sku] || exSku[sku]) return;
+        seen[sku] = true;
+        var t = typed[sku] || {};
+        var name = cleanTitle(prod.title);
+        if (nodes.length > 1 && v.title && !/^default title$/i.test(v.title)) name += " | " + v.title;
+        var line = {
+          name: name, sku: v.sku,
+          size: size || t.size || "",
+          wholesale: Number(t.wholesale) || 0,
+          msrp: v.price ? (parseFloat(v.price.amount) || 0) : (Number(t.msrp) || 0),
+          image: (prod.featuredImage && prod.featuredImage.url) || t.image || ""
+        };
+        if (t.timeline) line.timeline = t.timeline;
+        var col = cat.map[colName];
+        if (!col) { col = cat.map[colName] = { name: colName, products: [] }; cat.collections.push(col); }
+        col.products.push(line);
+      });
+    });
+
+    var order = rules.map(function (r) { return r.name; });
+    var all = cats.concat(Object.keys(extra).map(function (k) { return extra[k]; }));
+    all.forEach(function (c) {
+      c.collections.sort(function (a, b) {
+        var ia = order.indexOf(a.name), ib = order.indexOf(b.name);
+        return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+      });
+      c.collections.forEach(function (col) {
+        col.products.sort(function (a, b) { return a.name.localeCompare(b.name); });
+      });
+    });
+    return all.filter(function (c) { return c.collections.length; });
   }
 
 
@@ -859,13 +998,16 @@ var CONFIG = {
      token. If it's missing, fall back to the yes/no availableForSale flag. */
   var Q_WITH_QTY =
     "query($c:String){products(first:250,after:$c){pageInfo{hasNextPage endCursor}" +
-    "nodes{description variants(first:100){nodes{sku availableForSale quantityAvailable price{amount}}}}}}";
+    "nodes{title productType tags description featuredImage{url(transform:{maxWidth:900})} " +
+    "variants(first:100){nodes{title sku availableForSale quantityAvailable price{amount}}}}}}";
   var Q_NO_QTY =
     "query($c:String){products(first:250,after:$c){pageInfo{hasNextPage endCursor}" +
-    "nodes{description variants(first:100){nodes{sku availableForSale price{amount}}}}}}";
+    "nodes{title productType tags description featuredImage{url(transform:{maxWidth:900})} " +
+    "variants(first:100){nodes{title sku availableForSale price{amount}}}}}}";
 
   function fetchAllVariants(query) {
     var out = [];
+    liveProducts = [];
     function page(cursor) {
       return storefront(query, { c: cursor }).then(function (r) {
         if (r.errors && r.errors.length && !(r.data && r.data.products)) {
@@ -874,6 +1016,7 @@ var CONFIG = {
         var p = r.data.products;
         p.nodes.forEach(function (prod) {
           prod.variants.nodes.forEach(function (v) { v.desc = prod.description; });
+          liveProducts.push(prod);
           out = out.concat(prod.variants.nodes);
         });
         return p.pageInfo.hasNextPage ? page(p.pageInfo.endCursor) : out;
@@ -887,6 +1030,26 @@ var CONFIG = {
     fetchAllVariants(Q_WITH_QTY)
       .catch(function () { return fetchAllVariants(Q_NO_QTY); })
       .then(function (variants) {
+        /* swap in the live product list, keeping anything already entered */
+        if (CONFIG.LIVE_CATALOGUE && liveProducts.length) {
+          try {
+            var keep = {};
+            catalogue.forEach(function (p) {
+              var n = readQty($(p.id));
+              if (n > 0) keep[normSku(p.sku)] = n;
+            });
+            var cats = liveCategories(liveProducts);
+            if (cats.length) {
+              buildCatalogue(cats);
+              catalogue.forEach(function (p) {
+                var n = keep[normSku(p.sku)];
+                if (n) $(p.id).value = n;
+              });
+            }
+          } catch (e) {
+            buildCatalogue(CONFIG.CATEGORIES);   // anything odd: fall back to the typed list
+          }
+        }
         var bySku = {};
         variants.forEach(function (v) {
           var k = normSku(v.sku);
@@ -912,7 +1075,7 @@ var CONFIG = {
           if (rec && rec.size) {
             p.size = rec.size;
             var sz = $("sz_" + p.id);
-            if (sz) sz.innerHTML = esc(p.size) + (p.sku ? ' &nbsp;·&nbsp; ' + esc(p.sku) : '');
+            if (sz) sz.innerHTML = esc(p.size) + (p.sku ? (p.size ? ' &nbsp;·&nbsp; ' : '') + esc(p.sku) : '');
           }
         });
         refresh();
