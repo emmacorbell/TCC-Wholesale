@@ -740,8 +740,8 @@ var CONFIG = {
   function money(n) {
     return "$" + Number(n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   }
-  function halve(m) { return Math.round(Number(m || 0) * CONFIG.WHOLESALE_RATIO * 100) / 100; }
-  function placeholderTile(label) {
+   function halve(m) { return Math.floor(Number(m || 0) * CONFIG.WHOLESALE_RATIO + 1e-9); }
+   function placeholderTile(label) {
     var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600">' +
       '<rect width="600" height="600" fill="#EDE9E1"/>' +
       '<text x="300" y="295" text-anchor="middle" font-family="Georgia,serif" font-size="26" fill="#1B1B1F">' + esc(label) + '</text>' +
